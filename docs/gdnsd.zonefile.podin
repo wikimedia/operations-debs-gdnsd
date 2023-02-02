@@ -1,0 +1,272 @@
+=head1 NAME
+
+gdnsd.zonefile - gdnsd zonefile syntax
+
+=head1 SYNOPSIS
+
+example.com:
+
+  $TTL 86400
+
+  @	SOA ns1 dns-admin (
+        1      ; serial
+        7200   ; refresh
+        30M    ; retry
+        3D     ; expire
+        900    ; ncache
+  )
+
+  @	NS	ns1.example.com.
+  @	NS	ns2
+  @	NS	ns.example.net.
+
+  ns1	A	192.0.2.1 ; a comment
+  ns2.example.com.	A	192.0.2.2
+
+  @	7200	MX	10 mail-a
+  @	7200	MX	100 mail-b
+
+  $ttl 86400
+  ; a comment
+  mail-a	A 192.0.2.3
+  mail-b	A 192.0.2.4
+
+  subz		NS	ns1.subz
+  subz		NS	ns2.subz
+  ns1.subz	A	192.0.2.5
+  ns2.subz	A	192.0.2.6
+
+  www	600/10	DYNA	some_plugin!resource_name
+  alias		CNAME	www
+
+  _http._tcp	1800	SRV	5 500 80 www
+
+  foo		TXT	"blah blah" "blah"
+  _spf 		TXT	"v=spf1 ..."
+
+=head1 DESCRIPTION
+
+This is the primary zonefile syntax for L<gdnsd(8)>.  The syntax is
+designed to be as close as possible to the standard zonefile
+syntax from RFC 1035 (which is the "standard" format one
+typically sees with traditional BIND servers).  This document will
+just cover a few important highlights and/or deviations from the norm.
+
+=head1 DIRECTIVES
+
+The standard C<$TTL>, C<$ORIGIN>, and C<$INCLUDE> directives
+are supported with their normal syntax and semantics:
+
+C<$TTL> changes the default TTL of any records coming after it,
+and can occur multiple times.  Note that in the absence of a
+zonefile-level C<$TTL> setting, the default TTL comes from the
+global config option C<zones_default_ttl>, which in turn defaults
+to C<86400> (1 day).
+
+C<$ORIGIN> changes what is appended to unqualified hostnames
+(those lacking a final C<.>) seen in the zone file from that
+point forward, as well as any C<@> entries (which is an alias
+for the current origin).  C<$ORIGIN> itself may also be an unqualified
+name, in which case the previous origin is appended to it.
+Any fully-qualified C<$ORIGIN> must be within the zone described
+by this zonefile.  The default origin is the zone name itself.
+
+C<$INCLUDE> includes another file as if its contents existed
+at the point of the C<$INCLUDE> directive.  Include directives
+may specify an optional origin, which has the same effect
+as C<$ORIGIN> at the top of the included file.  Changes to
+the origin (and default ttl) within included files have no
+effect on the outer file.
+
+BIND's C<$GENERATE> extension is not supported at this time, but
+there's no fundamental reason it couldn't be added at a later
+date.
+
+=head1 SPECIAL NAMES AND ORIGINS
+
+The standard C<@>, as a whole name, is supported as an alias for the current
+origin.  In addition to this, gdnsd implements two special extensions C<@Z> and
+C<@F>.  These denote the current zone name, and the original origin (before any
+internal C<$ORIGIN> declarations) of the file currently being parsed.  Unlike
+C<@>, they can also be used as the final label of an unqualified name.  C<@Z>
+and C<@F> will always be equivalent to each other in the main zonefile for a
+zone, but may differ when parsing included files from "$INCLUDE".  As an example:
+
+
+    * zones/example.org has the line "$INCLUDE includes/foo foo"
+    * zones/includes/foo has these lines:
+       $ORIGIN bar
+       asdf A 192.0.2.1
+       $ORIGIN baz.@F
+       asdf A 192.0.2.2
+       $ORIGIN quux.@Z
+       asdf A 192.0.2.3
+    * This results in creating all of these:
+       asdf.bar.foo.example.org A 192.0.2.1
+       asdf.baz.foo.example.org A 192.0.2.2
+       asdf.quux.example.org    A 192.0.2.3
+
+
+Note that the origin changes accomplished with C<@F> and C<@Z> backtrack
+towards the root of the name hierarchy, and thus wouldn't normally be possible
+without explicitly using the zone name itself.  The main benefit of these
+directives is they allow this kind of origin-switching behavior while keeping
+all zone data relative to the zone name rather than absolute.  When combined
+with the fact that the zones scanner will load symlinks, this means the above
+F<zones/example.org> could also be symlinked as F<zones/example.com>, loading
+all the same files and providing an identical tree of data under the other zone
+name without conflict.
+
+=head1 SUPPORTED RESOURCE RECORD TYPES
+
+All RRs must be of class C<IN>, which is the implicit default.
+
+L<gdnsd(8)> supports the following standard RR types with their
+standard RDATA formats:
+
+traditional: SOA, A, AAAA, NS, PTR, CNAME, MX, SRV, TXT, NAPTR
+non-traditional: CAA
+explicitly unsupported: HINFO
+
+It also supports the generic format for unknown RR types documented
+in RFC 3597, which has syntax like:
+
+  foo TYPE31337 \# 10 0123456789 ABCDEF0123
+
+... which indicates an RR of numeric type 31337 containing
+10 bytes of RDATA, specified as the final part of the RR as
+a pair of 5-byte hex strings.  See RFC 3597 itself for full
+details.
+
+gdnsd does not allow using the RFC3597 format to specify any of the supported
+traditional standard RR types, but it can be used to encode data for the
+non-traditional types.  It's also not allowed to use RFC3597 to specify HINFO
+RRs, as these are now reserved in gdnsd for use in handling C<ANY> queries,
+using the RFC 8482 HINFO option.
+
+C<SOA> records' negative-caching TTL is set to the minimum of the traditional
+"minimum" (last) field (which always means "negative cache TTL" as of RFC
+2308), and the actual TTL of the SOA record itself.  This TTL is used as the
+actual TTL of the SOA record any time it is emitted, whether for negative or
+positive answers.
+
+Additionally, gdnsd supports two special-case, non-standard
+virtual resource record types DYNA and DYNC:
+
+=head2 DYNA
+
+C<DYNA> is for dynamically-determined address records (both A
+and AAAA) via plugin code.  The right-hand-side of a C<DYNA>
+RR is a plugin name and a resource name separated by an exclamation
+mark.  The named plugin will be fed the resource name and
+the DNS client's IP address and/or edns-client-subnet information,
+and it is up to the plugin code which addresses of which types
+to return in the response.
+
+The dynamic plugin lookup for C<DYNA> will be used anywhere that
+regular C<A> and/or C<AAAA> records would be used.  C<DYNA> cannot
+co-exist with actual static A or AAAA records at the same name, but can
+co-exist with any other RR-type.
+
+C<DYNA> and C<DYNAAAA> RRs B<cannot> be used to supply the addresses of
+nameservers.  In other words, any name that exists in zone scope on the
+right-hand-side of an C<NS> record cannot have C<DYNA> or C<DYNAAAA>
+(and relatedly, must have at least one of C<A> or C<AAAA>).
+
+Example:
+
+  ; asks plugin 'geoip' to provide address data from
+  ;  its resource named 'pubwww' for address queries.
+  foo DYNA geoip!pubwww
+  foo MX 10 mail
+
+=head2 DYNC
+
+C<DYNC> has the same syntax as C<DYNA> above, but different data
+rules.  Plugins results returned via C<DYNC> can be either addresses
+or a C<CNAME> record.  C<DYNC> cannot co-exist with B<any> other
+resource record at the same name, much like normal C<CNAME> RRs.
+This also implies that C<DYNC> cannot be used at the zone root,
+as the zone root requires C<NS> and C<SOA> RRs.
+
+C<DYNC>'s dynamic CNAME targets cannot be used to point at names in the same
+zonefile as the C<DYNC> record; they must be used to point at other zones.
+
+Example:
+
+  ; asks plugin 'geoip' to provide address data or a CNAME
+  ;  (at the plugin's discretion) for its resource named
+  ;  'www'.  No other RRs of any type for name 'foo' are
+  ;  legal alongside this record.
+  foo DYNC geoip!www
+
+=head2 DYNA/DYNC TTLs
+
+C<DYNA> and C<DYNC> TTL fields have a syntax extension and slightly
+different meanings than the TTL field of a traditional, fixed RR.
+The format for DYNA/DYNC TTLs is C<MAX[/MIN]>, with C<MIN> defaulting
+to half of C<MAX> if not specified explicitly.
+
+Based on the configuration and state of the underlying monitored services,
+(see "service_types" in L<gdnsd.config(8)>), gdnsd knows the minimum time
+to the next possible state-change which could affect a given C<DYNA> or
+C<DYNC> result.  For example, given the configuration and state, it may
+be known that in order for a currently C<DOWN> address to transition to
+the C<UP> state (and thus change the answer to a given query) would require
+7 more successful monitoring checks in a row at 8-second intervals, and
+therefore cannot happen in less than 56 seconds.  In this case 56 seconds
+would be the internally-calculated TTL.
+
+In cases where multiple monitored resources factor into a plugin's
+decision and/or response (e.g. multifo), the calculated TTL will generally
+be the minimum of all involved internal monitoring TTLs.  This calculated
+TTL is then clamped to the C<MAX> and C<MIN> limits from the zonefile.
+
+Examples:
+
+    ; Explicit range of 30 - 300:
+    www 300/30 DYNC weighted!foo
+    ; Implicit range of 150 - 300:
+    www 300 DYNA metafo!myservice
+    ; Avoid all TTL-mangling and use a fixed value of 10 minutes:
+    www 600/600 DYNA geoip!foo-dist
+
+=head2 TXT data auto-splitting
+
+gdnsd's C<TXT> RRs support the auto-splitting
+of long string constants.  Rather than manually breaking the
+data into 255-byte chunks as required by the protocol, you can
+specify a single long chunk and have the server break it at
+255 byte boundaries automatically.  (this behavior can be
+disabled via L<gdnsd.config(5)> as well, which will turn
+oversized chunks into zonefile parsing errors).
+
+TXT records are limited to a maximum of 16000 bytes when encoded in rdata form
+for wire transmission.
+
+=head1 SEE ALSO
+
+L<gdnsd(8)>, L<gdnsd.config(5)>
+
+The gdnsd manual.
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright (c) 2012 Brandon L Black <blblack@gmail.com>
+
+This file is part of gdnsd.
+
+gdnsd is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+gdnsd is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with gdnsd.  If not, see <http://www.gnu.org/licenses/>.
+
+=cut

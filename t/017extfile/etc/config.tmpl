@@ -1,0 +1,34 @@
+options => {
+  @std_testsuite_options@
+}
+
+service_types => {
+    extf_m => {
+        plugin => extfile
+        file => extf_m
+        interval = 5
+        up_thresh = 20
+        down_thresh = 10
+    }
+    extf_d => {
+        plugin => extfile
+        direct => true
+        file => extf_d
+        interval = 5
+    }
+}
+
+plugins => {
+  simplefo => {
+    res_extf_m => {
+      service_types = extf_m
+      primary = 127.0.0.1
+      secondary = 192.0.2.1
+    }
+    res_extf_d => {
+      service_types = extf_d
+      primary = 127.0.0.1
+      secondary = 192.0.2.1
+    }
+  }
+}

@@ -1,0 +1,13 @@
+# Valgrind suppression data
+# This remaining suppression should only be necessary for plugin_geoip's use of
+# a persistent, detached thread at this point.  Will re-design around that (and
+# other stuff) later...
+{
+  pthreads_detached
+  Memcheck:Leak
+  ...
+  fun:_dl_allocate_tls
+  ...
+  fun:pthread_create*
+  fun:spawn_zones_reloader_thread
+}
