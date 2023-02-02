@@ -1,0 +1,9 @@
+options => {
+  @std_testsuite_options@
+}
+
+service_types => {
+ down86399 => { plugin => static, state => down, ttl => 86399 },
+}
+
+plugins => $include{ "subd/plugins.cfg" }

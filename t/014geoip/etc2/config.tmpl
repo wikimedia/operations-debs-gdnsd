@@ -1,0 +1,259 @@
+options => {
+  @std_testsuite_options@
+}
+
+plugins => {
+ weighted => {
+  service_types => up,
+  r6dc3 => {
+   lb01 => [192.0.2.131, 20],
+   lb03 => [192.0.2.133, 30],
+   lb02 => [192.0.2.132, 25],
+  }
+  r6dc1 => {
+   lb01 => [192.0.2.111, 20],
+   lb03 => [192.0.2.113, 30],
+   lb02 => [192.0.2.112, 25],
+  },
+ }
+ geoip => {
+  undefined_datacenters_ok => true
+  maps => {
+   map1 => {
+    geoip2_db => "FakeCountry.mmdb"
+    datacenters => [ na, eu, ap, sa ]
+    map => {
+     AS => [ ap, eu ]
+     OC => [ ap, na ]
+     AN => [ ap, sa ]
+     NA => [ na, sa ]
+     SA => [ sa, na ]
+     EU => [ eu, na ]
+     AF => [ eu, ap ]
+    }
+   }
+   map2 => {
+    geoip2_db => "FakeCountry.mmdb"
+    datacenters => [ dc1, dc2, dc3 ]
+    map => {
+     NA => { US => [ dc2 ] }
+    }
+   }
+   map-empty => {
+    geoip2_db => "FakeCountry.mmdb"
+    datacenters => [ dc1, dc2 ]
+    map => { NA => { US => [] } }
+   }
+   map-undef => {
+    geoip2_db => "FakeCountry.mmdb"
+    datacenters => [ DC-A, DC-B, DC-C ]
+    map => { NA => { US => [ DC-A ] } }
+   }
+   map-noecs => {
+    geoip2_db => "FakeCountry.mmdb"
+    datacenters => [ na, eu, ap, sa ]
+    ignore_ecs => true
+    map => {
+     AS => [ ap, eu ]
+     OC => [ ap, na ]
+     AN => [ ap, sa ]
+     NA => [ na, sa ]
+     SA => [ sa, na ]
+     EU => [ eu, na ]
+     AF => [ eu, ap ]
+    }
+   }
+  }
+  plugin => weighted,
+  resources => {
+   res1 => {
+    service_types => up
+    plugin => multifo
+    map => map1,
+    dcmap = {
+     eu => { lb01 => 192.0.2.6, lb02 => 192.0.2.5 },
+     na => 192.0.2.1
+     sa => { lb01 => 192.0.2.3, lb02 => 192.0.2.4 },
+     ap => { lb01 => 192.0.2.7, lb02 => 192.0.2.8, lb03 => 192.0.2.9 },
+    }
+   }
+   res1sf => {
+    service_types => up
+    plugin => multifo
+    map => map1,
+    dcmap = {
+     eu => { lb01 => 192.0.2.6, lb02 => 192.0.2.5 },
+     na => 192.0.2.1
+     sa => { lb01 => 192.0.2.3, lb02 => 192.0.2.4 },
+     ap => { lb01 => 192.0.2.7, lb02 => 192.0.2.8, lb03 => 192.0.2.9 },
+    }
+    skip_first = true
+   }
+   res2 => {
+    service_types => up
+    plugin => multifo
+    map => map2,
+    dcmap = {
+     dc2 => 2001:DB8::11
+     dc1 => !mfor2d1
+     dc3 => 192.0.2.11
+    }
+   }
+   res5 => {
+    service_types => up
+    map => map2,
+    dcmap => {
+     dc1 => dc1cn.example.net.
+     dc2 => dc2cn-loop.example.net.
+     dc3 => dc3cn.example.net.
+    }
+   }
+   res44 => {
+    map => map2,
+    plugin => multifo,
+    dcmap => {
+     dc1 => { lb01 => 192.0.2.101, lb02 => 192.0.2.102, lb03 => 192.0.2.103 }
+     dc2 => { lb01 => 192.0.2.111, lb02 => 192.0.2.112, lb03 => 192.0.2.113 }
+     dc3 => { lb01 => 192.0.2.121, lb02 => 192.0.2.122, lb03 => 192.0.2.123 }
+    }
+   }
+   res4 => {
+    service_types => up
+    map => map2,
+    dcmap => {
+     dc2 => { plugin => multifo, lb01 => 2001:DB8::2:123, lb02 => 2001:DB8::2:456, lb03 => 2001:DB8::2:789 }
+     dc1 => { plugin => multifo, lb01 => 2001:DB8::1:123, lb02 => 2001:DB8::1:456, lb03 => 2001:DB8::1:789 }
+     dc3 => { plugin => multifo, lb01 => 2001:DB8::3:123, lb02 => 2001:DB8::3:456, lb03 => 2001:DB8::3:789 }
+    }
+   }
+   res6 => {
+    service_types => up
+    map => map2,
+    dcmap => {
+     dc1 => !r6dc1
+     dc2 => {
+      plugin => weighted
+      g1 => {
+       lb01 => [192.0.2.121, 20],
+       lb02 => [192.0.2.122, 25],
+       lb03 => [192.0.2.123, 30],
+      },
+      g2 => {
+       lb02 => [192.0.2.222, 15],
+       lb03 => [192.0.2.223, 20],
+       lb01 => [192.0.2.221, 10],
+      },
+     },
+     dc3 => %weighted!r6dc3,
+    }
+   }
+   res7 => {
+    service_types => up
+    map => map2,
+    dcmap => {
+      dc2 => { cn1 => [www1.example.org., 16], cn2 => [www2.example.org., 20] },
+      dc1 => { plugin => weighted, cn1 => [www1.example.net., 16], cn2 => [www2.example.net., 20] },
+      dc3 => { cn1 => [www3.example.net., 16], cn2 => [www4.example.net., 20] },
+    }
+   }
+   res3 => {
+    service_types => up
+    map => map2,
+    dcmap = {
+     dc3 => dc3cn.example.net.
+     dc2 => dc2cn.example.net.
+     dc1 => dc1cn.example.net.
+    }
+   }
+   res8 => {
+    map => map2,
+    service_types => down,
+    plugin => multifo
+    dcmap => {
+      dc1 => [ 192.0.2.90, 192.0.2.91 ]
+      dc2 => { service_types => up, lb01 => 192.0.2.92, lb02 => 192.0.2.93 }
+      dc3 => [ 192.0.2.94, 192.0.2.95 ]
+    }
+   }
+   resA => {
+    map => map2,
+    service_types => down,
+    plugin => multifo,
+    dcmap => {
+      dc1 => [ 192.0.2.90, 192.0.2.91 ]
+      dc2 => [ 192.0.2.92, 192.0.2.93 ]
+      dc3 => [ 192.0.2.94, 192.0.2.95 ]
+    }
+   }
+   res9 => {
+    plugin => multifo,
+    map => map2,
+    dcmap => {
+     dc1 => %metafo!meta1
+     dc2 => { lb01 => 192.0.2.92, lb02 => 192.0.2.93 }
+     dc3 => { lb01 => 192.0.2.94, lb02 => 192.0.2.95 }
+    }
+   }
+   res-e => {
+    map => map-empty,
+    dcmap => {
+     dc1 => 192.0.2.177,
+     dc2 => 192.0.2.178,
+    }
+   }
+   res-u => {
+    map => map-undef,
+    plugin => multifo
+    dcmap => {
+     DC-B => 192.0.2.180
+     DC-C => 192.0.2.181
+    }
+   }
+   res-w => {
+    service_types => up
+    plugin => multifo
+    map => map1,
+    dcmap = {
+     eu => { lb01 => 192.0.2.6, lb02 => 192.0.2.5 },
+     na => 192.0.2.1
+     sa => { lb01 => 192.0.2.3, lb02 => 192.0.2.4 },
+     ap => { lb01 => 192.0.2.7, lb02 => 192.0.2.8, lb03 => 192.0.2.9 },
+    }
+   }
+   res-noecs => {
+    service_types => up
+    plugin => multifo
+    map => map-noecs,
+    dcmap = {
+     eu => { lb01 => 192.0.2.6, lb02 => 192.0.2.5 },
+     na => 192.0.2.1
+     sa => { lb01 => 192.0.2.3, lb02 => 192.0.2.4 },
+     ap => { lb01 => 192.0.2.7, lb02 => 192.0.2.8, lb03 => 192.0.2.9 },
+    }
+   }
+  }
+ }
+ multifo => {
+  service_types => up,
+  mfor2d1 => { addrs_v4 => { 1 => 192.0.2.10 }, addrs_v6 => { 1 => 2001:DB8::10 } }
+ }
+ metafo => {
+  service_types => up,
+  resources => {
+   meta1 => {
+    datacenters => [ d1, d2 ],
+    dcmap => {
+     d2 => 192.0.2.143,
+     d1 => 192.0.2.142,
+    }
+   },
+   metascope => {
+    datacenters => [A, B],
+    dcmap => {
+     A => %geoip!res1,
+     B => 192.0.2.177
+    },
+   }
+  }
+ }
+}
