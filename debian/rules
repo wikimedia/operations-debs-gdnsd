@@ -1,0 +1,40 @@
+#!/usr/bin/make -f
+
+#export DH_VERBOSE=1
+
+include /usr/share/dpkg/pkg-info.mk
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+# This has to be exported to make some magic below work.
+export DH_OPTIONS
+
+ifneq (,$(findstring debug,$(DEB_BUILD_OPTIONS)))
+	DEBUG += --enable-developer
+endif
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	dh_auto_configure -- \
+		--with-buildinfo=$(DEB_VERSION_UPSTREAM_REVISION) \
+		--with-rundir=/run \
+		--with-systemdsystemunitdir=/lib/systemd/system \
+		$(DEBUG)
+
+override_dh_auto_install:
+	dh_auto_install
+	rmdir debian/gdnsd/run/gdnsd/ debian/gdnsd/run
+	rm -f debian/gdnsd/usr/share/doc/gdnsd/NEWS \
+	      debian/gdnsd/usr/share/doc/gdnsd/COPYING \
+	      debian/gdnsd/usr/share/doc/gdnsd/INSTALL \
+	      debian/gdnsd/usr/share/doc/gdnsd/stats_example.html
+
+override_dh_installchangelogs:
+	dh_installchangelogs NEWS
+
+# override the default start/restart logic on postinst (but not postrm) for
+# zero downtime upgrades. See gdnsd.postinst itself for more about this.
+override_dh_installsystemd:
+	dh_installsystemd --no-restart-after-upgrade --no-stop-on-upgrade --no-start

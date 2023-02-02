@@ -1,0 +1,11 @@
+Tests: daemon
+Depends: @
+Restrictions: isolation-container, needs-root
+
+Tests: common-operations
+Depends: @, bind9-dnsutils
+Restrictions: isolation-container, needs-root
+
+Tests: testsuite
+Depends: @, @builddeps@
+Restrictions: isolation-container, allow-stderr

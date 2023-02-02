@@ -1,0 +1,12 @@
+gdnsd for Debian
+================
+
+gdnsd by default needs no configuration. It will serve zones that are placed in
+/etc/gdnsd/zones/ with files named after their respective zone names and
+formatted as standard BIND/RFC1035-style (see gdnsd.zonefile(5) for more).
+
+For more complex configurations, gdnsd supports a wide number of options that
+can be defined in /etc/gdnsd/config. The gdnsd.config(5) manpage provides the
+complete reference of such options.
+
+ -- Faidon Liambotis <paravoid@debian.org>  Sun, 13 Jan 2013 08:15:00 +0200
